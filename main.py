@@ -1,50 +1,49 @@
 from argparse import ArgumentParser
+from typing import Any
 import subprocess
 import os
 
 
 def main():
-    parser = ArgumentParser(
+    cli = Wrapper()
+    argument_parser = ArgumentParser(
         prog="ffcli",
         description="simplified command line interface for ffmpeg",
     )
 
-    subparsers = parser.add_subparsers()
+    subparsers = argument_parser.add_subparsers()
     webm = subparsers.add_parser("webm")
+    webm.set_defaults(run=cli.to_webm)
     webm.add_argument("input_file")
     webm.add_argument("bitrate_type", choices=["crf", "vrf"])
-    webm.add_argument("bitrate", help="2M for VRF, 28 for CRF")
+    webm.add_argument("bitrate", help="2M for VRF, 15-35 for CRF")
     webm.add_argument(
-        "-an", action="store_const", const="-an", default="", help="strip audio"
+        "-an",
+        action="store_const",
+        const="-an",
+        default="",
+        help="strip audio",
     )
 
-    # parser.add_argument("output_format", default="webm", choices=["webm", "mp4"])
-
-    cli = Wrapper()
-    parser.parse_args(namespace=cli)
-    print("DEBUG", vars(cli))
-
-    cli.to_webm()
+    argument_parser.parse_args(namespace=cli)
+    cli.run()
 
 
 class Wrapper:
+    run: Any  # function invoked by ArgumentParser
     input_file: str
     output_format: str
     bitrate_type: str
     bitrate: str
+    an: str
 
     def __init__(self):
         pass
 
     def to_webm(self):
         input = f"-i {self.input_file}"
-        encoder = "-c:v libvpx-vp9"
-        bitrate = f"-b:v {self.bitrate_type} {self.bitrate}"
-        no_audio = "-an"
-        no_output = "-f null /dev/null"  # linux
-        no_output = "-f null NUL"  # windows
-
         output_file = os.path.splitext(self.input_file)[0] + ".webm"
+
         if output_file == self.input_file:
             if not confirm("Replace original file?"):
                 abort("Aborted, no files written")
@@ -52,16 +51,35 @@ class Wrapper:
             if not confirm(f"Override existing '{output_file}'?"):
                 abort("Aborted, no files written")
 
-        command = f"ffmpeg {input} {encoder} {bitrate} -pass 1 {no_audio} {no_output} && \
-                    ffmpeg {input} {encoder} {bitrate} -pass 2 {no_audio} {output_file}"
+        no_audio = self.an
+        encoder = "-c:v libvpx-vp9"
+        no_output = "-f null /dev/null"  # linux
+        no_output = "-f null NUL"  # windows
+
+        if self.bitrate_type == "vrf":
+            bitrate = f"-b:v {self.bitrate}"
+            command = (  # Two-pass average bitrate
+                f"ffmpeg {input} {encoder} {bitrate} -pass 1 -an {no_output} && "
+                f"ffmpeg {input} {encoder} {bitrate} -pass 2 {no_audio} {output_file}"
+            )
+            log_command(command)
+        elif self.bitrate_type == "crf":
+            bitrate = f"-crf {self.bitrate} -b:v 0"
+            command = (  # Constant Quality
+                f"ffmpeg {input} {encoder} {bitrate} {no_audio} {output_file}"
+            )
+            log_command(command)
+        else:
+            raise Exception("bitrate_type unknown")
+
         subprocess.check_call(command, shell=True)
 
     def to_mp4(self):
         raise Exception("not implemented")
 
 
-def abort(prompt: str):
-    print(prompt)
+def abort(text: str):
+    print(text)
     exit()
 
 
@@ -75,6 +93,13 @@ def confirm(prompt: str):
             print(prompt)
         else:
             return user_input == "y"
+
+
+def log_command(text: str):
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
+    text = f"executing {YELLOW}{text}{RESET}"
+    print(text)
 
 
 if __name__ == "__main__":
