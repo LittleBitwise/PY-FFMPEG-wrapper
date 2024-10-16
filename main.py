@@ -51,7 +51,7 @@ class Wrapper:
             if not confirm(f"Override existing '{output_file}'?"):
                 abort("Aborted, no files written")
 
-        no_audio = self.an
+        audio = self.an if self.an else "-c:a libopus"
         encoder = "-c:v libvpx-vp9"
         no_output = "-f null /dev/null"  # linux
         no_output = "-f null NUL"  # windows
@@ -60,13 +60,13 @@ class Wrapper:
             bitrate = f"-b:v {self.bitrate}"
             command = (  # Two-pass average bitrate
                 f"ffmpeg {input} {encoder} {bitrate} -pass 1 -an {no_output} && "
-                f"ffmpeg {input} {encoder} {bitrate} -pass 2 {no_audio} {output_file}"
+                f"ffmpeg {input} {encoder} {bitrate} -pass 2 {audio} {output_file}"
             )
             log_command(command)
         elif self.bitrate_type == "crf":
             bitrate = f"-crf {self.bitrate} -b:v 0"
             command = (  # Constant Quality
-                f"ffmpeg {input} {encoder} {bitrate} {no_audio} {output_file}"
+                f"ffmpeg {input} {encoder} {bitrate} {audio} {output_file}"
             )
             log_command(command)
         else:
