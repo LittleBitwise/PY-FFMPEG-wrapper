@@ -14,7 +14,6 @@ def main():
     subparsers = argument_parser.add_subparsers()
     webm = subparsers.add_parser("webm")
     webm.set_defaults(run=cli.to_webm)
-    webm.add_argument("input_file")
     webm.add_argument("bitrate_type", choices=["crf", "vrf"])
     webm.add_argument("bitrate", help="2M for VRF, 15-35 for CRF")
     webm.add_argument(
@@ -24,6 +23,12 @@ def main():
         default="",
         help="strip audio",
     )
+    webm.add_argument(
+        "--height",
+        default="",
+        help="set output height",
+    )
+    webm.add_argument("input_file")
 
     argument_parser.parse_args(namespace=cli)
     cli.run()
@@ -36,6 +41,7 @@ class Wrapper:
     bitrate_type: str
     bitrate: str
     an: str
+    height: str
 
     def __init__(self):
         pass
@@ -56,11 +62,13 @@ class Wrapper:
         no_output = "-f null /dev/null"  # linux
         no_output = "-f null NUL"  # windows
 
+        scale = f"-vf scale=-1:{self.height}" if self.height else ""
+
         if self.bitrate_type == "vrf":
             bitrate = f"-b:v {self.bitrate}"
             command = (  # Two-pass average bitrate
-                f"ffmpeg {input} {encoder} {bitrate} -pass 1 -an {no_output} && "
-                f"ffmpeg {input} {encoder} {bitrate} -pass 2 {audio} {output_file}"
+                f"ffmpeg {input} {encoder} {scale} {bitrate} -pass 1 -an {no_output} && "
+                f"ffmpeg -y {input} {encoder} {scale} {bitrate} -pass 2 {audio} {output_file}"
             )
             log_command(command)
         elif self.bitrate_type == "crf":
